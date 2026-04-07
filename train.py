@@ -1,16 +1,23 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.transforms as transforms
-from torchvision import datasets, models
+from torchvision import datasets, transforms, models
 from torch.utils.data import DataLoader
-import intel_extension_for_pytorch as ipex
 import os
+
+# Try Intel optimization (optional)
+try:
+    import intel_extension_for_pytorch as ipex
+    IPEX_AVAILABLE = True
+    print("✅ Using Intel oneAPI (IPEX)")
+except:
+    IPEX_AVAILABLE = False
+    print("⚠️ IPEX not available, running normally")
 
 # Device
 device = torch.device("cpu")
 
-# Data transforms
+# Transforms
 train_transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.RandomHorizontalFlip(),
@@ -24,7 +31,7 @@ val_transform = transforms.Compose([
     transforms.ToTensor(),
 ])
 
-# Load data
+# Data
 train_data = datasets.ImageFolder("dataset/train", transform=train_transform)
 val_data = datasets.ImageFolder("dataset/val", transform=val_transform)
 
@@ -36,17 +43,18 @@ model = models.mobilenet_v2(pretrained=True)
 model.classifier[1] = nn.Linear(model.last_channel, 3)
 model = model.to(device)
 
-# Loss + optimizer
+# Loss & optimizer
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.AdamW(model.parameters(), lr=0.0001)
 
-# Intel Optimization
-model, optimizer = ipex.optimize(model, optimizer=optimizer)
+# Apply Intel optimization if available
+if IPEX_AVAILABLE:
+    model, optimizer = ipex.optimize(model, optimizer=optimizer)
 
 best_acc = 0
 
-# Training
-for epoch in range(20):
+# Training loop
+for epoch in range(15):
     model.train()
     running_loss = 0
 
@@ -76,12 +84,11 @@ for epoch in range(20):
             correct += (predicted == labels).sum().item()
 
     acc = 100 * correct / total
-    print(f"Epoch {epoch+1}, Loss: {running_loss:.4f}, Val Accuracy: {acc:.2f}%")
+    print(f"Epoch {epoch+1}: Loss={running_loss:.4f}, Val Accuracy={acc:.2f}%")
 
-    # Save best model
     if acc > best_acc:
         best_acc = acc
         os.makedirs("models", exist_ok=True)
         torch.save(model.state_dict(), "models/best_model.pth")
 
-print("Training complete!")
+print(f"🔥 Best Validation Accuracy: {best_acc:.2f}%")
